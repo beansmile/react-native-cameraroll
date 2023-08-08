@@ -34,6 +34,7 @@ RCT_ENUM_CONVERTER(PHAssetCollectionSubtype, (@{
    @"all": @(PHAssetCollectionSubtypeSmartAlbumUserLibrary),
    @"event": @(PHAssetCollectionSubtypeAlbumSyncedEvent),
    @"faces": @(PHAssetCollectionSubtypeAlbumSyncedFaces),
+   @"selfies": @(PHAssetCollectionSubtypeSmartAlbumSelfPortraits), // support selfies
    @"library": @(PHAssetCollectionSubtypeSmartAlbumUserLibrary),
    @"photo-stream": @(PHAssetCollectionSubtypeAlbumMyPhotoStream), // incorrect, but legacy
    @"photostream": @(PHAssetCollectionSubtypeAlbumMyPhotoStream),
@@ -178,14 +179,14 @@ RCT_EXPORT_METHOD(saveToCameraRoll:(NSURLRequest *)request
         if ([[inputURI.pathExtension lowercaseString] isEqualToString:@"webp"]) {
           UIImage *webpImage;
 
-          #ifdef SD_WEB_IMAGE_WEBP_CODER_AVAILABLE 
+          #ifdef SD_WEB_IMAGE_WEBP_CODER_AVAILABLE
             webpImage = [[SDImageWebPCoder sharedCoder] decodedImageWithData:data options:nil];
           #else
             if (@available(iOS 14, *)) {
               webpImage = [UIImage imageWithData:data];
             }
           #endif
-          
+
           if (webpImage) {
             data = UIImageJPEGRepresentation(webpImage, 1.0);
           }
@@ -252,8 +253,10 @@ RCT_EXPORT_METHOD(getAlbums:(NSDictionary *)params
                   reject:(RCTPromiseRejectBlock)reject)
 {
   NSString *const mediaType = [params objectForKey:@"assetType"] ? [RCTConvert NSString:params[@"assetType"]] : @"All";
+  // support smartAlbum
+  bool smartAlbum = [params objectForKey:@"smartAlbum"] ? [RCTConvert BOOL:params[@"smartAlbum"]] : false;
   PHFetchOptions* options = [[PHFetchOptions alloc] init];
-  PHFetchResult<PHAssetCollection *> *const assetCollectionFetchResult = [PHAssetCollection fetchAssetCollectionsWithType:PHAssetCollectionTypeAlbum subtype:PHAssetCollectionSubtypeAny options:options];
+  PHFetchResult<PHAssetCollection *> *const assetCollectionFetchResult = [PHAssetCollection fetchAssetCollectionsWithType:(smartAlbum ? PHAssetCollectionTypeSmartAlbum : PHAssetCollectionTypeAlbum) subtype:PHAssetCollectionSubtypeAny options:options];
   NSMutableArray * result = [NSMutableArray new];
   [assetCollectionFetchResult enumerateObjectsUsingBlock:^(PHAssetCollection * _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
     PHFetchOptions *const assetFetchOptions = [RCTConvert PHFetchOptionsFromMediaType:mediaType fromTime:0 toTime:0];
@@ -320,7 +323,7 @@ RCT_EXPORT_METHOD(getPhotos:(NSDictionary *)params
 
   // If groupTypes is "all", we want to fetch the SmartAlbum "all photos". Otherwise, all
   // other groupTypes values require the "album" collection type.
-  PHAssetCollectionType const collectionType = ([groupTypes isEqualToString:@"all"]
+  PHAssetCollectionType const collectionType = ([groupTypes isEqualToString:@"all"] || [groupTypes isEqualToString:@"selfies"]
                                                 ? PHAssetCollectionTypeSmartAlbum
                                                 : PHAssetCollectionTypeAlbum);
   PHAssetCollectionSubtype const collectionSubtype = [RCTConvert PHAssetCollectionSubtype:groupTypes];
@@ -686,7 +689,7 @@ RCT_EXPORT_METHOD(getPhotoByInternalID:(NSString *)internalId
 - (NSArray<NSString *> *) mediaSubTypeLabelsForAsset:(PHAsset *)asset {
     PHAssetMediaSubtype subtype = asset.mediaSubtypes;
     NSMutableArray<NSString*> *mediaSubTypeLabels = [NSMutableArray array];
-    
+
     if (subtype & PHAssetMediaSubtypePhotoPanorama) {
         [mediaSubTypeLabels addObject:@"PhotoPanorama"];
     }
